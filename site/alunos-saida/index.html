@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle de Saídas</title>
+  <link rel="icon" href="icon.jpeg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1976d2">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Roboto', sans-serif; background: #f5f5f5; color: #333; margin: 0; padding: 0; }
+    .container { max-width: 900px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h1, h2 { margin: 10px 0; }
+    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: end; }
+    label { font-weight: 500; }
+    input, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 1rem; }
+    button { cursor: pointer; background: #1976d2; color: #fff; border: none; grid-column: span 2; padding: 10px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+    button:hover { background: #1565c0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    tbody tr:nth-child(odd) { background: #e3f2fd; }
+    tbody tr:nth-child(even) { background: #bbdefb; }
+    ul { list-style: none; padding-left: 0; margin-top: 10px; }
+    ul li { padding: 8px 0; border-bottom: 1px solid #ddd; }
+    .section { margin: 50px 0; padding-top: 20px; border-top: 2px solid #e0e0e0; }
+    footer { text-align: center; margin: 20px 0; color: #777; font-size: 0.9rem; }
+    @media print {
+      body { background: #fff; }
+      .container { box-shadow: none; }
+      form, #backup-section, #generate-detail, #generate-general, #export-data, #import-data, #import-file, #year-section { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Controle de Saídas</h1>
+
+    <!-- Seleção de Ano -->
+    <div class="section" id="year-section">
+      <h2>Base de Dados por Ano</h2>
+      <form>
+        <label for="year-select">Ano:</label>
+        <select id="year-select">
+          <option value="2025">2025</option>
+          <option value="2026">2026</option>
+        </select>
+      </form>
+    </div>
+
+    <!-- Formulário de Entrada -->
+    <div class="section" id="form-section">
+      <h2>Adicionar Saída</h2>
+      <form id="entry-form">
+        <label for="date">Data:</label>
+        <input type="date" id="date" required>
+
+        <label for="student">Nome do Aluno:</label>
+        <input type="text" id="student" placeholder="Ex: Eduardo" required>
+
+        <label for="time">Hora de Saída:</label>
+        <input type="time" id="time" required>
+
+        <label for="reason">Motivo:</label>
+        <input type="text" id="reason" placeholder="Ex: Consulta médica" required>
+
+        <button type="submit">Adicionar Saída</button>
+      </form>
+    </div>
+
+    <!-- Relatório Detalhado -->
+    <div class="section" id="report-section">
+      <h2>Relatório Detalhado</h2>
+      <form>
+        <label for="start-date">Data Início:</label>
+        <input type="date" id="start-date">
+
+        <label for="end-date">Data Fim:</label>
+        <input type="date" id="end-date">
+
+        <button type="button" id="generate-detail">Gerar Relatório</button>
+        <button type="button" id="print-detail">Imprimir Detalhado</button>
+      </form>
+      <div id="detail-report"></div>
+    </div>
+
+    <!-- Relatório Geral -->
+    <div class="section" id="general-section">
+      <h2>Relatório Geral</h2>
+      <button id="generate-general">Gerar Relatório Geral</button>
+      <button id="print-general">Imprimir Geral</button>
+      <div id="general-report"></div>
+    </div>
+
+    <!-- Backup de Dados -->
+    <div class="section" id="backup-section">
+      <h2>Backup de Dados</h2>
+      <button id="export-data">Exportar Dados</button>
+      <input type="file" id="import-file" accept=".json">
+      <button id="import-data">Importar Dados</button>
+    </div>
+  </div>
+  <footer>Developed by Edu</footer>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(reg => console.log('Service Worker registrado:', reg.scope))
+          .catch(err => console.error('Erro no Service Worker:', err));
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const currentYear = new Date().getFullYear();
+      const today = new Date().toISOString().split('T')[0];
+      const yearSelect = document.getElementById('year-select');
+      const dateInput = document.getElementById('date');
+      const startDateInput = document.getElementById('start-date');
+      const endDateInput = document.getElementById('end-date');
+      const detailReportDiv = document.getElementById('detail-report');
+      const generalReportDiv = document.getElementById('general-report');
+      let selectedYear, STORAGE_KEY, entries = [];
+
+      const saveEntries = () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      };
+
+      const updateYearSettings = () => {
+        selectedYear = yearSelect.value;
+        STORAGE_KEY = `school-exit-entries-${selectedYear}`;
+        const minDate = `${selectedYear}-01-01`;
+        const maxDate = (parseInt(selectedYear) === currentYear) ? today : (parseInt(selectedYear) < currentYear ? `${selectedYear}-12-31` : today);
+        dateInput.min = minDate;
+        dateInput.max = maxDate;
+        dateInput.value = (dateInput.value < minDate || dateInput.value > maxDate) ? minDate : dateInput.value;
+        startDateInput.min = minDate;
+        startDateInput.max = maxDate;
+        startDateInput.value = '';
+        endDateInput.min = minDate;
+        endDateInput.max = maxDate;
+        endDateInput.value = '';
+        entries = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+        detailReportDiv.innerHTML = '';
+        generalReportDiv.innerHTML = '';
+      };
+
+      yearSelect.addEventListener('change', updateYearSettings);
+      updateYearSettings();
+
+      // --- Adicionar nova saída ---
+      document.getElementById('entry-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const date = dateInput.value;
+        const student = document.getElementById('student').value.trim();
+        const time = document.getElementById('time').value;
+        const reason = document.getElementById('reason').value.trim();
+        if (!date || !student || !time || !reason) return;
+        if (date < dateInput.min || date > dateInput.max) { alert('Data fora do período permitido!'); return; }
+        entries.push({ date, student, time, reason });
+        saveEntries();
+        e.target.reset();
+        dateInput.value = dateInput.min;
+        alert('Saída adicionada com sucesso!');
+      });
+
+      // --- Relatório Detalhado com Edit/Excluir ---
+      function generateDetailReport() {
+        const start = startDateInput.value;
+        const end = endDateInput.value;
+        if (!start || !end) { alert('Selecione o intervalo de datas!'); return; }
+        const filtered = entries.filter(en => en.date >= start && en.date <= end)
+                                 .sort((a, b) => a.date.localeCompare(b.date));
+        let html = '<table><thead><tr><th>Data</th><th>Aluno</th><th>Hora</th><th>Motivo</th><th>Ações</th></tr></thead><tbody>';
+        filtered.forEach((en, idx) => {
+          html += `<tr>
+                    <td>${en.date}</td>
+                    <td>${en.student}</td>
+                    <td>${en.time}</td>
+                    <td>${en.reason}</td>
+                    <td>
+                      <button class="edit-btn" data-index="${idx}">Editar</button>
+                      <button class="delete-btn" data-index="${idx}">Excluir</button>
+                    </td>
+                  </tr>`;
+        });
+        html += '</tbody></table>';
+        detailReportDiv.innerHTML = html;
+
+        // Eventos para botões
+        detailReportDiv.querySelectorAll('.delete-btn').forEach(btn => {
+          btn.addEventListener('click', ev => {
+            const i = parseInt(ev.target.dataset.index);
+            if (confirm('Confirma exclusão desta entrada?')) {
+              entries.splice(i, 1);
+              saveEntries();
+              generateDetailReport();
+            }
+          });
+        });
+        detailReportDiv.querySelectorAll('.edit-btn').forEach(btn => {
+          btn.addEventListener('click', ev => {
+            const i = parseInt(ev.target.dataset.index);
+            const en = entries[i];
+            const newDate = prompt('Nova data (AAAA-MM-DD):', en.date);
+            if (!newDate) return;
+            if (newDate < dateInput.min || newDate > dateInput.max) { alert('Data inválida!'); return; }
+            const newStudent = prompt('Novo nome do aluno:', en.student);
+            if (!newStudent || !newStudent.trim()) { alert('Nome inválido!'); return; }
+            const newTime = prompt('Nova hora (HH:MM):', en.time);
+            if (!newTime) return;
+            const newReason = prompt('Novo motivo:', en.reason);
+            if (!newReason || !newReason.trim()) { alert('Motivo inválido!'); return; }
+            entries[i] = { date: newDate, student: newStudent.trim(), time: newTime, reason: newReason.trim() };
+            saveEntries();
+            generateDetailReport();
+          });
+        });
+      }
+      document.getElementById('generate-detail').addEventListener('click', generateDetailReport);
+      document.getElementById('print-detail').addEventListener('click', () => window.print());
+
+      // --- Relatório Geral ---
+      document.getElementById('generate-general').addEventListener('click', () => {
+        const counts = entries.reduce((acc, en) => {
+          acc[en.student] = (acc[en.student] || 0) + 1;
+          return acc;
+        }, {});
+        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        let html = '<ul>';
+        sorted.forEach(([student, count]) => html += `<li>${student} | ${count} saídas</li>`);
+        html += '</ul>';
+        generalReportDiv.innerHTML = html;
+      });
+      document.getElementById('print-general').addEventListener('click', () => window.print());
+
+      // --- Backup de Dados ---
+      document.getElementById('export-data').addEventListener('click', () => {
+        const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `backup-saidas-${selectedYear}.json`;
+        a.click(); URL.revokeObjectURL(url);
+      });
+      document.getElementById('import-data').addEventListener('click', () => {
+        const fileInput = document.getElementById('import-file');
+        if (!fileInput.files.length) { alert('Selecione um arquivo JSON!'); return; }
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const data = JSON.parse(reader.result);
+            if (Array.isArray(data)) { entries = data; saveEntries(); alert('Dados importados com sucesso!'); } else throw new Error();
+          } catch { alert('Arquivo inválido!'); }
+        };
+        reader.readAsText(fileInput.files[0]);
+      });
+    });
+  </script>
+</body>
+</html>
